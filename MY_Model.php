@@ -22,6 +22,7 @@
  * @license   MIT
  * @link      http://github.com/lonnieezell/my_model
  */
+
 class MY_Model extends CI_Model {
 
     /**
@@ -181,7 +182,12 @@ class MY_Model extends CI_Model {
      */
     protected $return_type      = 'object';
     protected $temp_return_type = NULL;
-
+	
+	/*
+	 If the return type is object , one can specify a custom class representing 
+	 the data to rather be created and returned as the stdClass object
+	*/
+	protected $custom_return_object      = '';
     /*
         If TRUE, inserts will return the last_insert_id. However,
         this can potentially slow down large imports drastically
@@ -310,7 +316,8 @@ class MY_Model extends CI_Model {
 
         $this->dbr->where($this->primary_key, $id);
         $row = $this->dbr->get($this->table_name);
-        $row = $row->{$this->_return_type()}();
+        $row = $this->_return_data($row);
+		  
 
         $row = $this->trigger('after_find', $row);
 
@@ -348,7 +355,7 @@ class MY_Model extends CI_Model {
         $this->trigger('before_find');
 
         $row = $this->dbr->get($this->table_name);
-        $row = $row->{$this->_return_type()}();
+        $row = $this->_return_data($row);
 
         $row = $this->trigger('after_find', $row);
 
@@ -414,7 +421,7 @@ class MY_Model extends CI_Model {
         }
 
         $rows = $this->db->get($this->table_name);
-        $rows = $rows->{$this->_return_type(true)}();
+        $rows = $this->_return_data($rows,true);
 
         if (is_array($rows))
         {
@@ -957,7 +964,7 @@ class MY_Model extends CI_Model {
      */
     function format_dropdown()
     {
-        $args = & func_get_args();
+        $args =  func_get_args();
 
         if (count($args) == 2)
         {
@@ -1086,12 +1093,36 @@ class MY_Model extends CI_Model {
     protected function _return_type($multi = FALSE)
     {
         $method = ($multi) ? 'result' : 'row';
-
-        // If our type is either 'array' or 'json', we'll simply use the array version
-        // of the function, since the database library doesn't support json.
-        return $this->temp_return_type == 'array' ? $method . '_array' : $method;
+        
+		//if a custom object return type
+		if (($this->temp_return_type == 'object') && ($this->custom_return_object != '')) {
+		  return 'custom_'.$method.'_object';
+		} else {
+			// If our type is either 'array' or 'json', we'll simply use the array version
+			// of the function, since the database library doesn't support json.
+			return $this->temp_return_type == 'array' ? $method . '_array' : $method;
+		}	
     }
 
+    /**
+     * Return the return data for configured type
+     */
+    protected function _return_data($data,$multi = FALSE)
+    {
+		$r_type_method = $this->_return_type($multi); 
+		//if a object return type
+		if (($this->temp_return_type == 'object') && ($this->custom_return_object != '')) {
+			if ($r_type_method == 'custom_row_object') {
+				$data = $data->{$r_type_method}(0,$this->custom_return_object);
+			} else {	
+			 $data = $data->{$r_type_method}($this->custom_return_object);
+			}
+		} else {
+			$data = $data->{$r_type_method}();
+		}	
+		return  $data;
+    }
+	
     //--------------------------------------------------------------------
 
     /**
