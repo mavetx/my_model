@@ -34,6 +34,8 @@ class MY_Model extends CI_Model {
 
     /**
      * The model's default primary key.
+     * If this property is set as an array of strings, then composite
+     * primary key is used. Use associative array to identify a record.
      *
      * @var string
      */
@@ -319,10 +321,20 @@ class MY_Model extends CI_Model {
             }
         }
 
-        $this->dbr->where($this->primary_key, $id);
+        // Composite primary key
+        if (is_array($this->primary_key)) {
+            if ($this->validate_primary_key($id) === false) {
+                throw new InvalidArgumentException("The input value is not a valid primary key.");
+            }
+
+            foreach ($this->primary_key as $key) {
+                $this->dbr->where($key, $id[$key]);
+            }
+        } else {
+            $this->dbr->where($this->primary_key, $id);
+        }
         $row = $this->dbr->get($this->table_name);
         $row = $this->_return_data($row);
-
 
         $row = $this->trigger('after_find', $row);
 
@@ -383,13 +395,28 @@ class MY_Model extends CI_Model {
     /**
      * Retrieves a number of items based on an array of primary_values passed in.
      *
-     * @param array $values An array of primary key values to find.
+     * @param array $ids An array of primary key values to find.
      *
      * @return object or FALSE
      */
-    public function find_many($values)
+    public function find_many($ids)
     {
-        $this->dbr->where_in($this->primary_key, $values);
+        // Composite primary key
+        if (is_array($this->primary_key)) {
+            foreach ($ids as $id) {
+                if ($this->validate_primary_key($id) === false) {
+                    throw new InvalidArgumentException("The input value is not a valid primary key.");
+                }
+
+                $this->dbr->or_group_start();
+                foreach ($this->primary_key as $key) {
+                    $this->dbr->where($key, $id[$key]);
+                }
+                $this->dbr->group_end();
+            }
+        } else {
+            $this->dbr->where_in($this->primary_key, $ids);
+        }
 
         return $this->find_all();
     }
@@ -567,7 +594,18 @@ class MY_Model extends CI_Model {
             }
         }
 
-        $this->dbw->where($this->primary_key, $id);
+        // Composite primary key
+        if (is_array($this->primary_key)) {
+            if ($this->validate_primary_key($id) === false) {
+                throw new InvalidArgumentException("The input value is not a valid primary key.");
+            }
+
+            foreach ($this->primary_key as $key) {
+                $this->dbw->where($key, $id[$key]);
+            }
+        } else {
+            $this->dbw->where($this->primary_key, $id);
+        }
 
         if ($this->set_modified and empty($data[$this->modified_field])) {
             $data[$this->modified_field] = $this->set_date();
@@ -656,7 +694,22 @@ class MY_Model extends CI_Model {
             }
         }
 
-        $this->dbw->where_in($this->primary_key, $ids);
+        // Composite primary key
+        if (is_array($this->primary_key)) {
+            foreach ($ids as $id) {
+                if ($this->validate_primary_key($id) === false) {
+                    throw new InvalidArgumentException("The input value is not a valid primary key.");
+                }
+
+                $this->dbw->or_group_start();
+                foreach ($this->primary_key as $key) {
+                    $this->dbw->where($key, $id[$key]);
+                }
+                $this->dbw->group_end();
+            }
+        } else {
+            $this->dbw->where_in($this->primary_key, $ids);
+        }
         $this->dbw->set($data);
         $result = $this->dbw->update($this->table_name);
 
@@ -747,7 +800,18 @@ class MY_Model extends CI_Model {
     {
         $this->trigger('before_delete', $id);
 
-        $this->dbw->where($this->primary_key, $id);
+        // Composite primary key
+        if (is_array($this->primary_key)) {
+            if ($this->validate_primary_key($id) === false) {
+                throw new InvalidArgumentException("The input value is not a valid primary key.");
+            }
+
+            foreach ($this->primary_key as $key) {
+                $this->dbw->where($key, $id[$key]);
+            }
+        } else {
+            $this->dbw->where($this->primary_key, $id);
+        }
 
         if ($this->soft_deletes) {
             $deleted_flag = 1;
@@ -820,7 +884,22 @@ class MY_Model extends CI_Model {
     {
         $ids = $this->trigger('before_delete', $ids);
 
-        $this->dbw->where_in($ids);
+        // Composite primary key
+        if (is_array($this->primary_key)) {
+            foreach ($ids as $id) {
+                if ($this->validate_primary_key($id) === false) {
+                    throw new InvalidArgumentException("The input value is not a valid primary key.");
+                }
+
+                $this->dbw->or_group_start();
+                foreach ($this->primary_key as $key) {
+                    $this->dbw->where($key, $id[$key]);
+                }
+                $this->dbw->group_end();
+            }
+        } else {
+            $this->dbw->where_in($ids);
+        }
 
         if ($this->soft_deletes) {
             $deleted_flag = 1;
@@ -1029,7 +1108,18 @@ class MY_Model extends CI_Model {
     public function get_field($id = NULL, $field = '')
     {
         $this->dbr->select($field);
-        $this->dbr->where($this->primary_key, $id);
+        // Composite primary key
+        if (is_array($this->primary_key)) {
+            if ($this->validate_primary_key($id) === false) {
+                throw new InvalidArgumentException("The input value is not a valid primary key.");
+            }
+
+            foreach ($this->primary_key as $key) {
+                $this->dbr->where($key, $id[$key]);
+            }
+        } else {
+            $this->dbr->where($this->primary_key, $id);
+        }
         $query = $this->dbr->get($this->table);
 
         if ($query && $query->num_rows() > 0) {
@@ -1392,6 +1482,28 @@ class MY_Model extends CI_Model {
                 // possibly won't be available in future versions of CI
                 return $this->{$db_type}->_error_message();
         }
+    }
+
+    //--------------------------------------------------------------------
+
+    /**
+     * Validate if input argument is a valid primary key for the class.
+     *
+     * @param $id
+     * @return bool
+     */
+    protected function validate_primary_key($id)
+    {
+        if (is_array($this->primary_key) && is_array($id) === false) {
+            return false;
+        }
+
+        foreach ($this->primary_key as $key) {
+            if (array_key_exists($key, $id) === false) {
+                return false;
+            }
+        }
+        return true;
     }
 
     //--------------------------------------------------------------------
