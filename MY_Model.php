@@ -57,6 +57,10 @@ class MY_Model extends CI_Model {
 
     /**
      * Field name to use to the deleted time column in the DB table.
+     * If deleted_field and soft_delete_key are set to the same column,
+     * using the timestamp to determine whether the record is removed.
+     * Otherwise, soft_delete_key is a boolean to flag soft deletion.
+     *
      * @var string
      */
     protected $deleted_field = 'deleted_on';
@@ -306,8 +310,13 @@ class MY_Model extends CI_Model {
 
         // Ignore any soft-deleted rows
         if ($this->soft_deletes && $this->temp_with_deleted !== TRUE) {
-            $this->dbr->where($this->table_name . '.' . $this->soft_delete_key, FALSE);
-            $this->dbr->or_where($this->table_name . '.' . $this->soft_delete_key, null, false);
+            // If deleted_field and soft_delete_key are the same column,
+            // using the timestamp to determine whether the record is removed.
+            if ($this->deleted_field == $this->soft_delete_key) {
+                $this->dbr->where($this->table_name . '.' . $this->soft_delete_key, null, false);
+            } else {
+                $this->dbr->where($this->table_name . '.' . $this->soft_delete_key, FALSE);
+            }
         }
 
         $this->dbr->where($this->primary_key, $id);
@@ -343,8 +352,13 @@ class MY_Model extends CI_Model {
 
         // Ignore any soft-deleted rows
         if ($this->soft_deletes && $this->temp_with_deleted !== TRUE) {
-            $this->dbr->where($this->soft_delete_key, FALSE);
-            $this->dbr->or_where($this->soft_delete_key, null, false);
+            // If deleted_field and soft_delete_key are the same column,
+            // using the timestamp to determine whether the record is removed.
+            if ($this->deleted_field == $this->soft_delete_key) {
+                $this->dbr->where($this->table_name . '.' .$this->soft_delete_key, null, false);
+            } else {
+                $this->dbr->where($this->soft_delete_key, FALSE);
+            }
         }
 
         $this->trigger('before_find');
@@ -410,8 +424,13 @@ class MY_Model extends CI_Model {
 
         // Ignore any soft-deleted rows
         if ($this->soft_deletes && $this->temp_with_deleted !== TRUE) {
-            $this->dbr->where($this->table_name . '.' . $this->soft_delete_key, FALSE);
-            $this->dbr->or_where($this->table_name . '.' . $this->soft_delete_key, null, false);
+            // If deleted_field and soft_delete_key are the same column,
+            // using the timestamp to determine whether the record is removed.
+            if ($this->deleted_field == $this->soft_delete_key) {
+                $this->dbr->where($this->table_name . '.' . $this->soft_delete_key, null, false);
+            } else {
+                $this->dbr->where($this->table_name . '.' . $this->soft_delete_key, FALSE);
+            }
         }
 
         $rows = $this->db->get($this->table_name);
@@ -739,7 +758,9 @@ class MY_Model extends CI_Model {
                 $deleted_flag = $this->set_date();
             }
 
-            $sets = $this->log_user ? array($this->soft_delete_key => $deleted_flag, $this->deleted_by_field => $this->auth->user_id()) : array($this->soft_delete_key => $deleted_flag);
+            $sets = $this->log_user ?
+                array($this->soft_delete_key => $deleted_flag, $this->deleted_by_field => $this->auth->user_id()) :
+                array($this->soft_delete_key => $deleted_flag);
 
             $result = $this->dbw->update($this->table_name, $sets);
         } // Hard Delete
@@ -770,7 +791,9 @@ class MY_Model extends CI_Model {
                 $deleted_flag = $this->set_date();
             }
 
-            $sets = $this->log_user ? array($this->soft_delete_key => $deleted_flag, $this->deleted_by_field => $this->auth->user_id()) : array($this->soft_delete_key => $deleted_flag);
+            $sets = $this->log_user ?
+                array($this->soft_delete_key => $deleted_flag, $this->deleted_by_field => $this->auth->user_id()) :
+                array($this->soft_delete_key => $deleted_flag);
 
             $result = $this->dbw->update($this->table_name, $sets);
         } else {
@@ -791,6 +814,7 @@ class MY_Model extends CI_Model {
      * $this->model->where_in($ids)->delete();
      *
      * @param array $ids An array of primary keys to be deleted.
+     * @return mixed
      */
     public function delete_many($ids)
     {
@@ -807,7 +831,9 @@ class MY_Model extends CI_Model {
                 $deleted_flag = $this->set_date();
             }
 
-            $sets = $this->log_user ? array($this->soft_delete_key => $deleted_flag, $this->deleted_by_field => $this->auth->user_id()) : array($this->soft_delete_key => $deleted_flag);
+            $sets = $this->log_user ?
+                array($this->soft_delete_key => $deleted_flag, $this->deleted_by_field => $this->auth->user_id()) :
+                array($this->soft_delete_key => $deleted_flag);
 
             $result = $this->dbw->update($this->table_name, $sets);
         } else {
@@ -842,6 +868,7 @@ class MY_Model extends CI_Model {
      * Sets the value of the soft deletes flag.
      *
      * @param boolean $val If TRUE, should perform a soft delete. If FALSE, a hard delete.
+     * @return $this
      */
     public function soft_delete($val = TRUE)
     {
@@ -1274,6 +1301,7 @@ class MY_Model extends CI_Model {
      * array at your model. :)
      *
      * @param object/array $row The value pair item to remove.
+     * @return mixed
      */
     public function protect_attributes($row)
     {
